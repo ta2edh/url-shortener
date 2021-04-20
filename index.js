@@ -3,7 +3,7 @@ const app = express();
 const mongoose = require('mongoose');
 const config = {
   port: 8080,
-  site_url: "https://url.erdem.ovh/", // website url, " / " required 
+  site_url: "https://example.com/", // website url, " / " required in end of url 
   mongoDB: process.env.MONGO, // mongodb connection url
   auth: process.env.AUTH // authorization token for line 32
 }
