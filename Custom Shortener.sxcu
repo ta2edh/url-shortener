@@ -1,12 +1,12 @@
 ﻿{
   "Version": "13.4.0",
   "DestinationType": "URLShortener",
-  "Name": "Custom Url Shortener",
+  "Name": "URL Shortener API",
   "RequestMethod": "POST",
   "RequestURL": "https://example.com/new",
   "Parameters": {
     "url": "$input$",
-    "auth": "authorization token"
+    "auth": "your-auth-token"
   },
-  "URL": "$json:url$"
+  "URL": "$json:data.short_url$"
 }

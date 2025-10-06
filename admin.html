@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>URL Shortener Admin Panel</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f7fa;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .login-form, .admin-panel {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        input, button {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+        
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        .btn-danger {
+            background: #dc3545;
+        }
+        
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        
+        .btn-success {
+            background: #28a745;
+        }
+        
+        .btn-success:hover {
+            background: #218838;
+        }
+        
+        .url-list {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .url-item {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .url-item:last-child {
+            border-bottom: none;
+        }
+        
+        .url-info {
+            flex: 1;
+            min-width: 300px;
+        }
+        
+        .url-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .url-actions button {
+            width: auto;
+            padding: 8px 15px;
+            font-size: 12px;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .alert {
+            padding: 12px;
+            margin-bottom: 20px;
+            border-radius: 6px;
+            border: 1px solid;
+        }
+        
+        .alert-success {
+            color: #155724;
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        
+        .alert-error {
+            color: #721c24;
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 200px;
+            gap: 15px;
+            align-items: end;
+        }
+        
+        @media (max-width: 768px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .url-item {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .url-actions {
+                width: 100%;
+                justify-content: flex-start;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>URL Shortener Admin Panel</h1>
+            <p>Manage your shortened URLs</p>
+        </div>
+
+        <!-- Login Form -->
+        <div id="loginSection" class="login-form">
+            <h2>Login</h2>
+            <div class="form-group">
+                <label for="authToken">Authentication Token:</label>
+                <input type="password" id="authToken" placeholder="Enter your auth token">
+            </div>
+            <button onclick="login()">Login</button>
+        </div>
+
+        <!-- Admin Panel -->
+        <div id="adminSection" class="hidden">
+            <!-- Stats -->
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-number" id="totalUrls">0</div>
+                    <div>Total URLs</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="totalClicks">0</div>
+                    <div>Total Clicks</div>
+                </div>
+            </div>
+
+            <!-- Create New URL -->
+            <div class="admin-panel">
+                <h3>Create New Short URL</h3>
+                <div id="createAlert"></div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="newUrl">Original URL:</label>
+                        <input type="url" id="newUrl" placeholder="https://example.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="customCode">Custom Code (Optional):</label>
+                        <input type="text" id="customCode" placeholder="my-custom-code">
+                    </div>
+                </div>
+                <button class="btn-success" onclick="createUrl()">Create Short URL</button>
+            </div>
+
+            <!-- URL List -->
+            <div class="url-list">
+                <div style="padding: 20px; border-bottom: 2px solid #eee; background: #f8f9fa;">
+                    <h3>Manage URLs</h3>
+                </div>
+                <div id="urlList"></div>
+            </div>
+
+            <div style="text-align: center; margin-top: 20px;">
+                <button class="btn-danger" onclick="logout()">Logout</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let authToken = '';
+        let urls = [];
+
+        // Check if already logged in
+        window.onload = function() {
+            const savedToken = localStorage.getItem('authToken');
+            if (savedToken) {
+                authToken = savedToken;
+                document.getElementById('authToken').value = savedToken;
+                loadAdminPanel();
+            }
+        };
+
+        async function login() {
+            authToken = document.getElementById('authToken').value.trim();
+            
+            if (!authToken) {
+                alert('Please enter authentication token');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/urls', {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    localStorage.setItem('authToken', authToken);
+                    loadAdminPanel();
+                } else {
+                    alert('Invalid authentication token');
+                }
+            } catch (error) {
+                alert('Connection error');
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('authToken');
+            authToken = '';
+            document.getElementById('loginSection').classList.remove('hidden');
+            document.getElementById('adminSection').classList.add('hidden');
+            document.getElementById('authToken').value = '';
+        }
+
+        async function loadAdminPanel() {
+            document.getElementById('loginSection').classList.add('hidden');
+            document.getElementById('adminSection').classList.remove('hidden');
+            await loadUrls();
+        }
+
+        async function loadUrls() {
+            try {
+                const response = await fetch('/api/urls', {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    urls = data.data.urls;
+                    updateStats();
+                    renderUrls();
+                } else {
+                    alert('Failed to load URLs');
+                }
+            } catch (error) {
+                alert('Connection error');
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('totalUrls').textContent = urls.length;
+            const totalClicks = urls.reduce((sum, url) => sum + (url.clicks || 0), 0);
+            document.getElementById('totalClicks').textContent = totalClicks;
+        }
+
+        function renderUrls() {
+            const urlList = document.getElementById('urlList');
+            
+            if (urls.length === 0) {
+                urlList.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No URLs found</div>';
+                return;
+            }
+
+            urlList.innerHTML = urls.map(url => `
+                <div class="url-item">
+                    <div class="url-info">
+                        <div style="font-weight: 600; margin-bottom: 5px;">
+                            <a href="${window.location.origin}/${url.code}" target="_blank">
+                                ${window.location.origin}/${url.code}
+                            </a>
+                        </div>
+                        <div style="color: #666; font-size: 14px; margin-bottom: 5px;">
+                            → ${url.url}
+                        </div>
+                        <div style="color: #888; font-size: 12px;">
+                            Created: ${new Date(url.created_at).toLocaleString()} | 
+                            Clicks: ${url.clicks || 0}
+                            ${url.last_accessed ? ` | Last: ${new Date(url.last_accessed).toLocaleString()}` : ''}
+                        </div>
+                    </div>
+                    <div class="url-actions">
+                        <button onclick="editUrl('${url.code}')">Edit</button>
+                        <button class="btn-danger" onclick="deleteUrl('${url.code}')">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function createUrl() {
+            const newUrl = document.getElementById('newUrl').value.trim();
+            const customCode = document.getElementById('customCode').value.trim();
+            
+            if (!newUrl) {
+                showAlert('createAlert', 'Please enter a URL', 'error');
+                return;
+            }
+
+            try {
+                const body = { url: newUrl };
+                if (customCode) body.code = customCode;
+
+                const response = await fetch('/new', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify(body)
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showAlert('createAlert', `Short URL created: ${data.data.short_url}`, 'success');
+                    document.getElementById('newUrl').value = '';
+                    document.getElementById('customCode').value = '';
+                    await loadUrls();
+                } else {
+                    showAlert('createAlert', data.message, 'error');
+                }
+            } catch (error) {
+                showAlert('createAlert', 'Connection error', 'error');
+            }
+        }
+
+        async function editUrl(code) {
+            const url = urls.find(u => u.code === code);
+            if (!url) return;
+
+            const newUrl = prompt('Enter new URL:', url.url);
+            if (!newUrl || newUrl === url.url) return;
+
+            const newCode = prompt('Enter new code (optional):', code);
+
+            try {
+                const body = { url: newUrl };
+                if (newCode && newCode !== code) body.newCode = newCode;
+
+                const response = await fetch(`/api/urls/${code}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify(body)
+                });
+
+                if (response.ok) {
+                    await loadUrls();
+                    alert('URL updated successfully');
+                } else {
+                    const data = await response.json();
+                    alert(data.message);
+                }
+            } catch (error) {
+                alert('Connection error');
+            }
+        }
+
+        async function deleteUrl(code) {
+            if (!confirm('Are you sure you want to delete this URL?')) return;
+
+            try {
+                const response = await fetch(`/api/urls/${code}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    await loadUrls();
+                    alert('URL deleted successfully');
+                } else {
+                    const data = await response.json();
+                    alert(data.message);
+                }
+            } catch (error) {
+                alert('Connection error');
+            }
+        }
+
+        function showAlert(containerId, message, type) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+            setTimeout(() => container.innerHTML = '', 5000);
+        }
+
+        // Enter key support for login
+        document.getElementById('authToken').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') login();
+        });
+    </script>
+</body>
+</html>

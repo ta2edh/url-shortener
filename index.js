@@ -1,45 +1,49 @@
-const express = require("express");
+import express from 'express';
+import fs from 'fs'; // File system module for file operations
+import path from 'path'; // Path module for file path operations
+import { fileURLToPath } from 'url'; // For __dirname in ES6 modules
+import config from './config.js'; // Import config file
+
 const app = express();
-const fs = require('fs'); // Dosya işlemleri için fs modülü
-const path = require('path'); // Dosya yolu işlemleri için path modülü
 
-// Sabitler ve Ayarlar
-const config = {
-  port: 3001,
-  site_url: "https://example.com/", // website url, "/" required in end of url 
+// Middlewares
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static('.'));
 
-  auth: process.env.AUTH // authorization token for line 32
-}
+// Alternative to __dirname in ES6 modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// JSON veritabanı dosyasının yolu
+// JSON database file path
 const dbPath = path.join(__dirname, 'urls.json');
 
-// Veritabanı dosyasını okuma fonksiyonu
+// Database read function
 const readDB = () => {
   try {
     if (!fs.existsSync(dbPath)) {
-      // Dosya yoksa boş bir array ile oluştur
+      // Create empty array if file doesn't exist
       fs.writeFileSync(dbPath, '[]');
       return [];
     }
     const data = fs.readFileSync(dbPath, 'utf8');
     return JSON.parse(data);
   } catch (err) {
-    console.error("Veritabanı okuma hatası:", err);
-    return []; // Hata durumunda boş array döndür
+    console.error("Database read error:", err);
+    return []; // Return empty array on error
   }
 };
 
-// Veritabanı dosyasına yazma fonksiyonu
+// Database write function
 const writeDB = (data) => {
   try {
     fs.writeFileSync(dbPath, JSON.stringify(data, null, 2), 'utf8');
   } catch (err) {
-    console.error("Veritabanı yazma hatası:", err);
+    console.error("Database write error:", err);
   }
 };
 
-// Kod üretme fonksiyonu
+// Code generation function
 const generateCode = () => {
   const keys = "qwertyuopasdfghjklizxcvbnm1234567890";
   const length = 10;
@@ -53,7 +57,7 @@ const generateCode = () => {
       code += keys[n].toUpperCase();
     }
     
-    // Kodun veritabanında var olup olmadığını kontrol et
+    // Check if code exists in database
     const exists = urls.some(urlEntry => urlEntry.code === code);
     
     if (!exists) {
@@ -62,51 +66,298 @@ const generateCode = () => {
   }
 }
 
-// YENI URL OLUŞTURMA ENDPOINT'i
+// Authentication middleware
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  const queryToken = req.query.auth;
+  
+  const providedToken = token || queryToken;
+  
+  if (!providedToken) {
+    return res.status(401).json({
+      success: false,
+      error: "Unauthorized",
+      message: "Authentication token is required"
+    });
+  }
+  
+  if (providedToken !== config.auth) {
+    return res.status(401).json({
+      success: false,
+      error: "Unauthorized",
+      message: "Invalid authentication token"
+    });
+  }
+  
+  next();
+};
+
+// NEW URL CREATION ENDPOINT
 app.post("/new", (req, res) => {
-  // Gerekli kontroller
-  if (!req.query.url) return res.status(403).json({ code: 403, error: "Unauthorized: URL missing" });
-  if (!req.query.auth) return res.status(403).json({ code: 403, error: "Unauthorized: Auth token missing" });
-  if (req.query.auth !== config.auth) return res.status(403).json({ code: 403, error: "Unauthorized: Invalid auth token" });
+  // Required validations
+  if (!req.query.url && !req.body.url) {
+    return res.status(400).json({ 
+      success: false,
+      error: "Bad Request", 
+      message: "URL parameter is required" 
+    });
+  }
+  
+  if (!req.query.auth && !req.headers.authorization) {
+    return res.status(401).json({ 
+      success: false,
+      error: "Unauthorized", 
+      message: "Authentication token is required" 
+    });
+  }
+  
+  const authToken = req.query.auth || (req.headers.authorization && req.headers.authorization.split(' ')[1]);
+  if (authToken !== config.auth) {
+    return res.status(401).json({ 
+      success: false,
+      error: "Unauthorized", 
+      message: "Invalid authentication token" 
+    });
+  }
 
-  const code = generateCode();
-  const newUrlEntry = { url: req.query.url, code: code };
+  const url = req.query.url || req.body.url;
+  const customCode = req.query.code || req.body.code;
+  
+  // Check if custom code already exists
+  if (customCode) {
+    const urls = readDB();
+    const exists = urls.some(urlEntry => urlEntry.code === customCode);
+    if (exists) {
+      return res.status(409).json({
+        success: false,
+        error: "Conflict",
+        message: "Custom code already exists"
+      });
+    }
+  }
+  
+  const code = customCode || generateCode();
+  const newUrlEntry = { 
+    url: url, 
+    code: code,
+    created_at: new Date().toISOString(),
+    clicks: 0
+  };
 
-  // Veritabanına kaydet
+  // Save to database
   let urls = readDB();
   urls.push(newUrlEntry);
   writeDB(urls);
 
-  return res.status(200).json({ url: config.site_url + code });
+  return res.status(201).json({ 
+    success: true,
+    data: {
+      original_url: url,
+      short_url: config.site_url + code,
+      code: code,
+      created_at: newUrlEntry.created_at,
+      clicks: newUrlEntry.clicks
+    }
+  });
 });
 
-// YÖNLENDİRME ENDPOINT'i
-app.get("/:code", (req, res) => { // redirect
+// GET ALL URLs (Admin only)
+app.get("/api/urls", authenticateToken, (req, res) => {
+  const urls = readDB();
+  return res.status(200).json({
+    success: true,
+    data: {
+      total: urls.length,
+      urls: urls
+    }
+  });
+});
+
+// GET SINGLE URL INFO (Admin only)
+app.get("/api/urls/:code", authenticateToken, (req, res) => {
+  const code = req.params.code;
+  const urls = readDB();
+  const urlEntry = urls.find(entry => entry.code === code);
+  
+  if (!urlEntry) {
+    return res.status(404).json({
+      success: false,
+      error: "Not Found",
+      message: "URL not found"
+    });
+  }
+  
+  return res.status(200).json({
+    success: true,
+    data: urlEntry
+  });
+});
+
+// UPDATE URL (Admin only)
+app.put("/api/urls/:code", authenticateToken, (req, res) => {
+  const code = req.params.code;
+  const { url: newUrl, newCode } = req.body;
+  
+  let urls = readDB();
+  const urlIndex = urls.findIndex(entry => entry.code === code);
+  
+  if (urlIndex === -1) {
+    return res.status(404).json({
+      success: false,
+      error: "Not Found",
+      message: "URL not found"
+    });
+  }
+  
+  // Check if new code already exists (if changing code)
+  if (newCode && newCode !== code) {
+    const codeExists = urls.some(entry => entry.code === newCode);
+    if (codeExists) {
+      return res.status(409).json({
+        success: false,
+        error: "Conflict",
+        message: "New code already exists"
+      });
+    }
+  }
+  
+  // Update the entry
+  if (newUrl) urls[urlIndex].url = newUrl;
+  if (newCode) urls[urlIndex].code = newCode;
+  urls[urlIndex].updated_at = new Date().toISOString();
+  
+  writeDB(urls);
+  
+  return res.status(200).json({
+    success: true,
+    data: urls[urlIndex]
+  });
+});
+
+// DELETE URL (Admin only)
+app.delete("/api/urls/:code", authenticateToken, (req, res) => {
+  const code = req.params.code;
+  let urls = readDB();
+  const urlIndex = urls.findIndex(entry => entry.code === code);
+  
+  if (urlIndex === -1) {
+    return res.status(404).json({
+      success: false,
+      error: "Not Found",
+      message: "URL not found"
+    });
+  }
+  
+  const deletedUrl = urls[urlIndex];
+  urls.splice(urlIndex, 1);
+  writeDB(urls);
+  
+  return res.status(200).json({
+    success: true,
+    message: "URL deleted successfully",
+    data: deletedUrl
+  });
+});
+
+// REDIRECT ENDPOINT
+app.get("/:code", (req, res) => {
   const requestedCode = req.params.code;
 
   if (typeof requestedCode === "undefined" || requestedCode === "null") {
-    return res.status(403).json({ code: 403, error: "Unauthorized: Code missing" });
-  }
-  if (requestedCode === "favicon.ico") return;
-
-  // Veritabanından kodu bul
-  const urls = readDB();
-  const urlEntry = urls.find(entry => entry.code === requestedCode);
-
-  if (!urlEntry) {
-    return res.status(403).json({ code: 403, error: "Unauthorized: Code not found" });
+    return res.status(400).json({ 
+      success: false,
+      error: "Bad Request", 
+      message: "Short code is required" 
+    });
   }
   
-  // Yönlendir
-  return res.redirect(urlEntry.url);
+  if (requestedCode === "favicon.ico") return res.status(204).send();
+
+  // Find code in database
+  let urls = readDB();
+  const urlIndex = urls.findIndex(entry => entry.code === requestedCode);
+
+  if (urlIndex === -1) {
+    return res.status(404).json({ 
+      success: false,
+      error: "Not Found", 
+      message: "Short URL not found" 
+    });
+  }
+  
+  // Increment click counter
+  urls[urlIndex].clicks = (urls[urlIndex].clicks || 0) + 1;
+  urls[urlIndex].last_accessed = new Date().toISOString();
+  writeDB(urls);
+  
+  // Redirect to original URL
+  return res.redirect(301, urls[urlIndex].url);
 });
 
-// ANA SAYFA VE HATA ENDPOINT'leri
-app.get("/", (req, res) => res.redirect("https://replit.com/@erdemsweb/sharex-url-shortener"));
-app.get("*", (req, res) => res.status(403).json({ code: 403, error: "Unauthorized" }));
+// ADMIN PANEL ROUTE
+app.get("/admin", (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin.html'));
+});
 
-// SUNUCUYU BAŞLAT
+// HOME PAGE AND ERROR ENDPOINTS
+app.get("/", (req, res) => {
+  res.status(200).json({
+    success: true,
+    data: {
+      name: "URL Shortener API",
+      version: "1.0.0",
+      description: "A simple and fast URL shortening service",
+      admin_panel: `${req.protocol}://${req.get('host')}/admin`,
+      endpoints: {
+        "POST /new": {
+          description: "Create a new shortened URL",
+          parameters: {
+            url: "The URL to shorten (required)",
+            auth: "Authentication token (required)",
+            code: "Custom short code (optional)"
+          }
+        },
+        "GET /:code": {
+          description: "Redirect to original URL using short code",
+          parameters: {
+            code: "Short code from shortened URL"
+          }
+        },
+        "GET /api/urls": {
+          description: "Get all URLs (Admin only)",
+          auth_required: true
+        },
+        "PUT /api/urls/:code": {
+          description: "Update URL (Admin only)",
+          parameters: {
+            url: "New URL",
+            newCode: "New code (optional)"
+          },
+          auth_required: true
+        },
+        "DELETE /api/urls/:code": {
+          description: "Delete URL (Admin only)",
+          auth_required: true
+        }
+      },
+      repository: "https://github.com/ta2edh/url-shortener"
+    }
+  });
+});
+
+// Catch-all route for Express 5.x
+app.use((req, res) => {
+  res.status(404).json({ 
+    success: false,
+    error: "Not Found", 
+    message: "The requested endpoint does not exist" 
+  });
+});
+
+// START SERVER
 const port = config.port || 3001;
 app.listen(port, () => {
-    console.log(`Sunucu http://localhost:${port} adresinde çalışıyor. Veritabanı dosyası: ${dbPath}`);
+    console.log(`🚀 Server running on http://localhost:${port}`);
+    console.log(`📁 Database file: ${dbPath}`);
 });
