@@ -11,6 +11,22 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('.'));
 
+// CORS middleware for Cloudflare compatibility
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200);
+  } else {
+    next();
+  }
+});
+
+// Trust proxy for Cloudflare
+app.set('trust proxy', true);
+
 // Alternative to __dirname in ES6 modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -291,7 +307,11 @@ app.get("/:code", (req, res) => {
   urls[urlIndex].last_accessed = new Date().toISOString();
   writeDB(urls);
   
-  // Redirect to original URL
+  // Redirect to original URL with cache headers for Cloudflare
+  res.set({
+    'Cache-Control': 'public, max-age=300', // 5 minutes cache
+    'CF-Cache-Tag': 'redirect'
+  });
   return res.redirect(301, urls[urlIndex].url);
 });
 
@@ -302,13 +322,17 @@ app.get("/admin", (req, res) => {
 
 // HOME PAGE AND ERROR ENDPOINTS
 app.get("/", (req, res) => {
+  // Get proper protocol and host for Cloudflare tunnels
+  const protocol = req.get('CF-Visitor') ? JSON.parse(req.get('CF-Visitor')).scheme : req.protocol;
+  const host = req.get('host');
+  
   res.status(200).json({
     success: true,
     data: {
       name: "URL Shortener API",
       version: "1.0.0",
       description: "A simple and fast URL shortening service",
-      admin_panel: `${req.protocol}://${req.get('host')}/admin`,
+      admin_panel: `${protocol}://${host}/admin`,
       endpoints: {
         "POST /new": {
           description: "Create a new shortened URL",
@@ -356,8 +380,9 @@ app.use((req, res) => {
 });
 
 // START SERVER
-const port = config.port || 3001;
-app.listen(port, () => {
-    console.log(`🚀 Server running on http://localhost:${port}`);
+const port = config.port || process.env.PORT || 3001;
+app.listen(port, '0.0.0.0', () => {
+    console.log(`🚀 Server running on http://0.0.0.0:${port}`);
     console.log(`📁 Database file: ${dbPath}`);
+    console.log(`🌐 Ready for Cloudflare tunnel connections`);
 });

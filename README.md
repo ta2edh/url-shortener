@@ -28,6 +28,14 @@ npm start
 
 Server runs on `http://localhost:3001` (default port from config)
 
+## Cloudflare Tunnel Support
+
+This application is optimized for Cloudflare tunnels with:
+- CORS headers for cross-origin requests
+- Trusted proxy configuration  
+- Protocol detection for HTTPS tunnels
+- Cache optimization for redirects
+
 ## Admin Panel
 
 Access: `http://localhost:3001/admin`
@@ -56,3 +64,25 @@ Set your auth token in `config.js` (copy from `config.example.js`)
 ## Authentication
 
 Use `Authorization: Bearer <token>` header or `?auth=<token>` query parameter.
+
+## Deployment
+
+### Local Development
+```bash
+npm start
+```
+
+### Cloudflare Tunnel
+```bash
+# Install cloudflared
+# Create tunnel
+cloudflared tunnel create url-shortener
+
+# Configure tunnel
+cloudflared tunnel route dns url-shortener yourdomain.com
+
+# Run tunnel
+cloudflared tunnel run url-shortener
+```
+
+The application automatically detects Cloudflare and adjusts headers accordingly.
