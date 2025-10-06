@@ -11,6 +11,19 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('.'));
 
+// Query string parser for better URL handling
+app.use((req, res, next) => {
+  // Ensure URL is properly decoded
+  if (req.query.url) {
+    try {
+      req.query.url = decodeURIComponent(req.query.url);
+    } catch (e) {
+      // If decoding fails, keep original
+    }
+  }
+  next();
+});
+
 // CORS middleware for Cloudflare compatibility
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
@@ -111,6 +124,13 @@ const authenticateToken = (req, res, next) => {
 
 // NEW URL CREATION ENDPOINT
 app.post("/new", (req, res) => {
+  // Debug logging
+  console.log('POST /new request:', {
+    query: req.query,
+    body: req.body,
+    headers: req.headers.authorization
+  });
+
   // Required validations
   if (!req.query.url && !req.body.url) {
     return res.status(400).json({ 
@@ -138,12 +158,24 @@ app.post("/new", (req, res) => {
   }
 
   const url = req.query.url || req.body.url;
-  const customCode = req.query.code || req.body.code;
+  const customCode = req.query.code || req.body.code || null;
   
-  // Check if custom code already exists
-  if (customCode) {
+  // Check if custom code already exists (only if provided)
+  if (customCode && customCode.trim() !== '') {
+    const trimmedCode = customCode.trim();
+    
+    // Check for reserved keywords
+    const reservedWords = ['admin', 'api', 'new', 'favicon.ico'];
+    if (reservedWords.includes(trimmedCode.toLowerCase())) {
+      return res.status(400).json({
+        success: false,
+        error: "Bad Request",
+        message: "Custom code cannot be a reserved keyword"
+      });
+    }
+    
     const urls = readDB();
-    const exists = urls.some(urlEntry => urlEntry.code === customCode);
+    const exists = urls.some(urlEntry => urlEntry.code === trimmedCode);
     if (exists) {
       return res.status(409).json({
         success: false,
@@ -153,7 +185,7 @@ app.post("/new", (req, res) => {
     }
   }
   
-  const code = customCode || generateCode();
+  const code = (customCode && customCode.trim() !== '') ? customCode.trim() : generateCode();
   const newUrlEntry = { 
     url: url, 
     code: code,
@@ -276,6 +308,11 @@ app.delete("/api/urls/:code", authenticateToken, (req, res) => {
   });
 });
 
+// ADMIN PANEL ROUTE (must be before /:code route)
+app.get("/admin", (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin.html'));
+});
+
 // REDIRECT ENDPOINT
 app.get("/:code", (req, res) => {
   const requestedCode = req.params.code;
@@ -289,6 +326,15 @@ app.get("/:code", (req, res) => {
   }
   
   if (requestedCode === "favicon.ico") return res.status(204).send();
+  
+  // Skip reserved routes
+  if (requestedCode === "admin" || requestedCode === "api") {
+    return res.status(404).json({ 
+      success: false,
+      error: "Not Found", 
+      message: "The requested endpoint does not exist" 
+    });
+  }
 
   // Find code in database
   let urls = readDB();
@@ -313,11 +359,6 @@ app.get("/:code", (req, res) => {
     'CF-Cache-Tag': 'redirect'
   });
   return res.redirect(301, urls[urlIndex].url);
-});
-
-// ADMIN PANEL ROUTE
-app.get("/admin", (req, res) => {
-  res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
 // HOME PAGE AND ERROR ENDPOINTS
