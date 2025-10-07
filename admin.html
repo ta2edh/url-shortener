@@ -357,6 +357,9 @@
                             <a href="${window.location.origin}/${url.code}" target="_blank">
                                 ${window.location.origin}/${url.code}
                             </a>
+                            <span style="background: #e3f2fd; color: #1976d2; padding: 2px 8px; border-radius: 12px; font-size: 12px; margin-left: 10px;">
+                                Code: ${url.code}
+                            </span>
                         </div>
                         <div style="color: #666; font-size: 14px; margin-bottom: 5px;">
                             → ${url.url}
@@ -365,11 +368,12 @@
                             Created: ${new Date(url.created_at).toLocaleString()} | 
                             Clicks: ${url.clicks || 0}
                             ${url.last_accessed ? ` | Last: ${new Date(url.last_accessed).toLocaleString()}` : ''}
+                            ${url.updated_at ? ` | Updated: ${new Date(url.updated_at).toLocaleString()}` : ''}
                         </div>
                     </div>
                     <div class="url-actions">
-                        <button onclick="editUrl('${url.code}')">Edit</button>
-                        <button class="btn-danger" onclick="deleteUrl('${url.code}')">Delete</button>
+                        <button onclick="editUrl('${url.code}')" title="Edit URL and Code">✏️ Edit</button>
+                        <button class="btn-danger" onclick="deleteUrl('${url.code}')" title="Delete URL">🗑️ Delete</button>
                     </div>
                 </div>
             `).join('');
@@ -382,6 +386,25 @@
             if (!newUrl) {
                 showAlert('createAlert', 'Please enter a URL', 'error');
                 return;
+            }
+            
+            // Validate custom code if provided
+            if (customCode) {
+                const reservedWords = ['admin', 'api', 'new', 'favicon.ico'];
+                if (reservedWords.includes(customCode.toLowerCase())) {
+                    showAlert('createAlert', 'Custom code cannot be a reserved keyword (admin, api, new)', 'error');
+                    return;
+                }
+                
+                if (customCode.length < 1 || customCode.length > 50) {
+                    showAlert('createAlert', 'Custom code must be between 1-50 characters', 'error');
+                    return;
+                }
+                
+                if (!/^[a-zA-Z0-9_-]+$/.test(customCode)) {
+                    showAlert('createAlert', 'Custom code can only contain letters, numbers, hyphens, and underscores', 'error');
+                    return;
+                }
             }
 
             try {
@@ -412,20 +435,68 @@
             }
         }
 
-        async function editUrl(code) {
+        function showEditModal(code) {
             const url = urls.find(u => u.code === code);
             if (!url) return;
 
-            const newUrl = prompt('Enter new URL:', url.url);
-            if (!newUrl || newUrl === url.url) return;
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                background: rgba(0,0,0,0.5); z-index: 1000; display: flex;
+                align-items: center; justify-content: center;
+            `;
+            
+            modal.innerHTML = `
+                <div style="background: white; padding: 30px; border-radius: 10px; width: 90%; max-width: 500px;">
+                    <h3 style="margin-bottom: 20px;">Edit URL</h3>
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">Original URL:</label>
+                        <input type="url" id="editUrl" value="${url.url}" style="width: 100%; padding: 10px; border: 2px solid #e1e5e9; border-radius: 6px;">
+                    </div>
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">Short Code:</label>
+                        <input type="text" id="editCode" value="${url.code}" style="width: 100%; padding: 10px; border: 2px solid #e1e5e9; border-radius: 6px;">
+                        <small style="color: #666;">Change the short code (must be unique)</small>
+                    </div>
+                    <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                        <button onclick="closeModal()" style="padding: 10px 20px; border: 2px solid #ccc; background: white; border-radius: 6px; cursor: pointer;">Cancel</button>
+                        <button onclick="saveEdit('${code}')" style="padding: 10px 20px; border: none; background: #007bff; color: white; border-radius: 6px; cursor: pointer;">Save Changes</button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+            
+            window.currentModal = modal;
+        }
 
-            const newCode = prompt('Enter new code (optional):', code);
+        function closeModal() {
+            if (window.currentModal) {
+                document.body.removeChild(window.currentModal);
+                window.currentModal = null;
+            }
+        }
+
+        async function saveEdit(originalCode) {
+            const newUrl = document.getElementById('editUrl').value.trim();
+            const newCode = document.getElementById('editCode').value.trim();
+            
+            if (!newUrl) {
+                alert('URL is required');
+                return;
+            }
+            
+            if (!newCode) {
+                alert('Short code is required');
+                return;
+            }
 
             try {
                 const body = { url: newUrl };
-                if (newCode && newCode !== code) body.newCode = newCode;
+                if (newCode !== originalCode) body.newCode = newCode;
 
-                const response = await fetch(`/api/urls/${code}`, {
+                const response = await fetch(`/api/urls/${originalCode}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -434,16 +505,23 @@
                     body: JSON.stringify(body)
                 });
 
+                const data = await response.json();
+
                 if (response.ok) {
+                    closeModal();
                     await loadUrls();
                     alert('URL updated successfully');
                 } else {
-                    const data = await response.json();
-                    alert(data.message);
+                    alert(data.message || 'Failed to update URL');
                 }
             } catch (error) {
                 alert('Connection error');
             }
+        }
+
+        // Keep the old function for backward compatibility but use the new modal
+        async function editUrl(code) {
+            showEditModal(code);
         }
 
         async function deleteUrl(code) {

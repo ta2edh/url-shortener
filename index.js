@@ -128,11 +128,14 @@ app.post("/new", (req, res) => {
   console.log('POST /new request:', {
     query: req.query,
     body: req.body,
-    headers: req.headers.authorization
+    bodyType: typeof req.body,
+    hasBody: !!req.body,
+    headers: req.headers.authorization,
+    contentType: req.headers['content-type']
   });
 
   // Required validations
-  if (!req.query.url && !req.body.url) {
+  if (!req.query.url && !(req.body && req.body.url)) {
     return res.status(400).json({ 
       success: false,
       error: "Bad Request", 
@@ -157,8 +160,8 @@ app.post("/new", (req, res) => {
     });
   }
 
-  const url = req.query.url || req.body.url;
-  const customCode = req.query.code || req.body.code || null;
+  const url = req.query.url || (req.body && req.body.url);
+  const customCode = req.query.code || (req.body && req.body.code) || null;
   
   // Check if custom code already exists (only if provided)
   if (customCode && customCode.trim() !== '') {
